@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOL BAKERY - 新拠点設備投資 補助金活用ダッシュボード</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Base styles and custom scrollbar */
+        body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; background-color: #FFF8F0; color: #4A3F35; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #D97736; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #B85D19; }
+        
+        /* Chart container constraint requirements */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+
+        /* Interactive utilities */
+        .tab-btn.active { background-color: #D97736; color: white; border-color: #D97736; }
+        .tab-btn { transition: all 0.3s ease; }
+        .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease-out; }
+        .accordion-content.open { max-height: 1000px; /* arbitrary large number */ }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Chosen Palette: Warm Bakery Tones (Beige #FFF8F0, Orange #D97736, Dark Brown #5C4033) -->
+    <!-- Application Structure Plan: ダッシュボード形式を採用。左側にサイドナビゲーション、右側にコンテンツを配置。新拠点設立という目的に対し、「自社の強み（現状）」「設備投資計画（見積り）」「活用可能な補助金（提案）」「今後のタスク（議事録）」の4つの論理的セクションに分割。ユーザー（経営者）が一目で投資の全体像と利用できる補助金の選択肢、そして次に何をすべきかを理解・行動できるUIを設計。 -->
+    <!-- Visualization & Content Choices: 
+    1. 設備投資内訳 -> Goal: Inform -> Doughnut Chart (Chart.js) -> Hover tooltip -> 内訳の割合を直感的に見せるため。
+    2. 補助金リスト -> Goal: Organize -> Interactive Cards with Toggle (Vanilla JS) -> Click to expand -> 情報量を調整し、興味のある補助金の詳細（なぜ使えるのか等）を読ませるため。
+    3. アクションプラン -> Goal: Change -> Task List with Checkboxes -> Click to check -> ミーティングで決定したネクストアクションを管理するため。
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <div class="flex h-screen overflow-hidden">
+        
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 bg-white border-r border-orange-200 flex-shrink-0 flex flex-col hidden md:flex">
+            <div class="p-6 border-b border-orange-100">
+                <h1 class="text-2xl font-bold text-[#5C4033] tracking-tighter">SOL BAKERY<br><span class="text-sm text-orange-600 font-normal">新拠点プロジェクト</span></h1>
+            </div>
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+                <button onclick="switchTab('overview')" id="nav-overview" class="tab-btn active w-full text-left px-4 py-3 rounded-lg font-medium border border-transparent hover:bg-orange-50 text-[#5C4033]">📊 プロジェクト概要</button>
+                <button onclick="switchTab('investment')" id="nav-investment" class="tab-btn w-full text-left px-4 py-3 rounded-lg font-medium border border-transparent hover:bg-orange-50 text-[#5C4033]">💰 設備投資計画</button>
+                <button onclick="switchTab('subsidies')" id="nav-subsidies" class="tab-btn w-full text-left px-4 py-3 rounded-lg font-medium border border-transparent hover:bg-orange-50 text-[#5C4033]">📝 おすすめ補助金</button>
+                <button onclick="switchTab('action')" id="nav-action" class="tab-btn w-full text-left px-4 py-3 rounded-lg font-medium border border-transparent hover:bg-orange-50 text-[#5C4033]">✅ アクションプラン</button>
+            </nav>
+            <div class="p-4 border-t border-orange-100 text-xs text-stone-500">
+                Data source: 見積書(大村商会), 決算書(第6期), MTG議事録
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto bg-[#FFF8F0]">
+            <!-- Mobile Header -->
+            <header class="md:hidden bg-white p-4 border-b border-orange-200 flex justify-between items-center sticky top-0 z-10">
+                <h1 class="text-xl font-bold text-[#5C4033]">SOL BAKERY</h1>
+                <select id="mobile-nav" onchange="switchTab(this.value)" class="bg-orange-50 border border-orange-200 text-[#5C4033] p-2 rounded">
+                    <option value="overview">📊 プロジェクト概要</option>
+                    <option value="investment">💰 設備投資計画</option>
+                    <option value="subsidies">📝 おすすめ補助金</option>
+                    <option value="action">✅ アクションプラン</option>
+                </select>
+            </header>
+
+            <div class="p-6 md:p-10 max-w-5xl mx-auto space-y-12">
+
+                <!-- Section: Overview -->
+                <section id="section-overview" class="block">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-bold text-[#5C4033] border-b-4 border-orange-400 inline-block pb-2 mb-4">プロジェクト概要と強み</h2>
+                        <p class="text-lg text-stone-600">10月の新拠点オープンに向けた全体像です。SOL BAKERYの圧倒的な商品開発力と地域ブランド力を武器に、高額な設備投資を補助金で有利に進めるための基盤情報を整理しています。</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-orange-100 border-t-4 border-t-orange-400">
+                            <h3 class="text-xl font-bold text-[#5C4033] mb-4">🏠 企業基盤 (岡山県里庄町)</h3>
+                            <ul class="space-y-3">
+                                <li class="flex items-start"><span class="mr-2">🍞</span> <span><strong>業態:</strong> 地域密着型ブーランジェリー（行列の絶えない目的地型店舗）</span></li>
+                                <li class="flex items-start"><span class="mr-2">📈</span> <span><strong>財務:</strong> 流動資産 約1.75億円（第6期末）と強固な財務基盤</span></li>
+                                <li class="flex items-start"><span class="mr-2">💡</span> <span><strong>強み:</strong> 「餃子パン」等に代表される独創的な商品開発力</span></li>
+                            </ul>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-orange-100 border-t-4 border-t-orange-400">
+                            <h3 class="text-xl font-bold text-[#5C4033] mb-4">🏆 主な実績・ブランド力</h3>
+                            <ul class="space-y-3">
+                                <li class="flex justify-between items-center border-b border-gray-100 pb-2">
+                                    <span class="font-medium">TVチャンピオン パン職人選手権</span>
+                                    <span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm font-bold">優勝</span>
+                                </li>
+                                <li class="flex justify-between items-center border-b border-gray-100 pb-2">
+                                    <span class="font-medium">カレーパングランプリ2023</span>
+                                    <span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm font-bold">金賞・最高金賞</span>
+                                </li>
+                                <li class="flex justify-between items-center pb-2">
+                                    <span class="font-medium">街パングランプリ 惣菜パン部門</span>
+                                    <span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm font-bold">優勝</span>
+                                </li>
+                            </ul>
+                            <p class="text-sm text-stone-500 mt-3">※これらの実績は、補助金申請時の「事業の優位性」を証明する強力な武器になります。</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section: Investment -->
+                <section id="section-investment" class="hidden">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-bold text-[#5C4033] border-b-4 border-orange-400 inline-block pb-2 mb-4">新拠点設備投資計画</h2>
+                        <p class="text-lg text-stone-600">見積書（大村商会様提出）に基づく、新店舗導入機械設備の概算内訳です。投資総額が大きいため、補助金の活用効果が非常に高くなります。</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-orange-100 flex flex-col md:flex-row gap-8 items-center">
+                        <div class="w-full md:w-1/2">
+                            <div class="text-center mb-4">
+                                <p class="text-sm text-stone-500 font-bold uppercase tracking-wide">投資総額 (税別)</p>
+                                <p class="text-4xl font-extrabold text-orange-600">約 4,651 万円</p>
+                            </div>
+                            
+                            <!-- Chart Container (Strictly matching technical requirements) -->
+                            <div class="chart-container">
+                                <canvas id="investmentChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="w-full md:w-1/2">
+                            <h3 class="text-xl font-bold text-[#5C4033] mb-4">主要導入設備リスト</h3>
+                            <div class="overflow-hidden rounded-lg border border-gray-200">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">設備名・機器</th>
+                                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">金額 (概算)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200 text-sm">
+                                        <tr><td class="px-4 py-3">オーブン UT4枚2段（石引き）等</td><td class="px-4 py-3 text-right">約 680万円</td></tr>
+                                        <tr><td class="px-4 py-3">スチコン (XJBC06EU EPRM)</td><td class="px-4 py-3 text-right">約 198万円</td></tr>
+                                        <tr><td class="px-4 py-3">プレハブ冷凍庫 (1坪)</td><td class="px-4 py-3 text-right">約 240万円</td></tr>
+                                        <tr><td class="px-4 py-3">スーパーシーター</td><td class="px-4 py-3 text-right">約 162万円</td></tr>
+                                        <tr><td class="px-4 py-3">洗浄機・冷蔵庫等・その他周辺機器</td><td class="px-4 py-3 text-right">約 3,370万円</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="text-xs text-stone-400 mt-2">※金額は見積書（2026年1月26日）に基づく税別の参考値です。</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section: Subsidies -->
+                <section id="section-subsidies" class="hidden">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-bold text-[#5C4033] border-b-4 border-orange-400 inline-block pb-2 mb-4">活用可能な補助金ピックアップ</h2>
+                        <p class="text-lg text-stone-600">岡山県で事業を展開し、約4000万円以上の設備投資を行う製パン業向けに、採択の可能性が高く、投資回収に大きく貢献する補助金を厳選しました。詳細をクリックしてご確認ください。</p>
+                    </div>
+
+                    <div class="space-y-4">
+                        
+                        <!-- Subsidy Card 1 (Main Target) -->
+                        <div class="bg-white rounded-xl shadow-sm border border-orange-200 overflow-hidden">
+                            <button onclick="toggleAccordion('acc1')" class="w-full px-6 py-5 text-left flex justify-between items-center hover:bg-orange-50 transition-colors focus:outline-none">
+                                <div>
+                                    <span class="inline-block px-2 py-1 bg-red-100 text-red-700 text-xs font-bold rounded mb-2">本命・高額補助</span>
+                                    <h3 class="text-xl font-bold text-[#5C4033]">ものづくり・商業・サービス生産性向上促進補助金</h3>
+                                    <p class="text-sm text-stone-500 mt-1">製品・サービス高付加価値化枠 など</p>
+                                </div>
+                                <span id="icon-acc1" class="text-2xl text-orange-400 transition-transform duration-300">＋</span>
+                            </button>
+                            <div id="acc1" class="accordion-content bg-orange-50/50">
+                                <div class="p-6 border-t border-orange-100">
+                                    <div class="grid md:grid-cols-2 gap-6">
+                                        <div>
+                                            <h4 class="font-bold text-[#5C4033] mb-2">💡 なぜSOL BAKERYに最適か</h4>
+                                            <p class="text-sm text-stone-700 mb-4">
+                                                新製品の開発や、新しい生産方式（最新オーブンやスチコンの導入）による生産性向上を目的とした設備投資に利用できます。御社の**「TVチャンピオン優勝」等の実績と圧倒的な商品開発力**は、審査において「革新的な製品を生み出せる能力がある」という強力な証拠となり、採択率を劇的に高めます。
+                                            </p>
+                                            <h4 class="font-bold text-[#5C4033] mb-2">🎯 補助額の目安</h4>
+                                            <ul class="text-sm text-stone-700 list-disc list-inside">
+                                                <li>補助率: 1/2 または 2/3</li>
+                                                <li>上限額: 750万円 〜 数千万円（枠や従業員数により変動）</li>
+                                                <li>※4,600万円の投資に対して、1,500万円〜の大きな補助が狙える可能性があります。</li>
+                                            </ul>
+                                        </div>
+                                        <div class="bg-white p-4 rounded border border-orange-100">
+                                            <h4 class="font-bold text-[#5C4033] mb-2">📌 申請のポイント</h4>
+                                            <ul class="text-sm text-stone-700 space-y-2">
+                                                <li>・単なる機材の「買い替え」ではなく、「この機械を入れることで、これまで作れなかった新食感のパン（付加価値）が作れるようになる」というストーリーが必要です。</li>
+                                                <li>・スチコン導入による「調理パン（餃子パン等）の生産効率化」も良いアピール材料です。</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subsidy Card 2 -->
+                        <div class="bg-white rounded-xl shadow-sm border border-orange-200 overflow-hidden">
+                            <button onclick="toggleAccordion('acc2')" class="w-full px-6 py-5 text-left flex justify-between items-center hover:bg-orange-50 transition-colors focus:outline-none">
+                                <div>
+                                    <span class="inline-block px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded mb-2">新事業展開向け（事業再構築 後継）</span>
+                                    <h3 class="text-xl font-bold text-[#5C4033]">新事業進出補助金</h3>
+                                    <p class="text-sm text-stone-500 mt-1">新市場進出・業態転換による成長支援</p>
+                                </div>
+                                <span id="icon-acc2" class="text-2xl text-orange-400 transition-transform duration-300">＋</span>
+                            </button>
+                            <div id="acc2" class="accordion-content bg-blue-50/30">
+                                <div class="p-6 border-t border-orange-100">
+                                    <h4 class="font-bold text-[#5C4033] mb-2">💡 主な要件とSOL BAKERYでの活用イメージ</h4>
+                                    <ul class="text-sm text-stone-700 mb-4 list-disc list-inside space-y-1">
+                                        <li><strong>要件:</strong> 新分野展開や業態転換など、これまでの主軸事業とは異なる「新たな市場」への進出を行い、一定の売上高成長（または付加価値額の増加）を達成する事業計画を策定すること。</li>
+                                        <li><strong>活用例:</strong> 今回導入する高額な「プレハブ冷凍庫」や「スチコン」を最大限活用し、<strong>「全国向けの冷凍パンEC事業」</strong>や<strong>「ホテル・レストラン向け（BtoB）のパン卸売事業」</strong>を新たに本格化させる、といったストーリーが考えられます。</li>
+                                    </ul>
+                                    <div class="bg-white p-4 rounded border border-blue-100">
+                                        <h4 class="font-bold text-[#5C4033] mb-2">📌 申請のポイント</h4>
+                                        <p class="text-sm text-stone-700">単なる「新拠点のオープン（既存事業の単なる拡大）」では要件を満たしません。「誰に」「何を」「どのように」提供するのかが、既存店舗とどう違い、どう新しい市場を開拓するのかを社会保険労務士・行政書士の杉山と連携して事業計画書に論理的に落とし込む必要があります。</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subsidy Card 3 -->
+                        <div class="bg-white rounded-xl shadow-sm border border-orange-200 overflow-hidden">
+                            <button onclick="toggleAccordion('acc3')" class="w-full px-6 py-5 text-left flex justify-between items-center hover:bg-orange-50 transition-colors focus:outline-none">
+                                <div>
+                                    <span class="inline-block px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded mb-2">自動化・省力化向け（カタログ型）</span>
+                                    <h3 class="text-xl font-bold text-[#5C4033]">中小企業省力化投資補助金</h3>
+                                    <p class="text-sm text-stone-500 mt-1">スチコン・洗浄機などの導入による人手不足解消</p>
+                                </div>
+                                <span id="icon-acc3" class="text-2xl text-orange-400 transition-transform duration-300">＋</span>
+                            </button>
+                            <div id="acc3" class="accordion-content bg-green-50/30">
+                                <div class="p-6 border-t border-orange-100">
+                                    <h4 class="font-bold text-[#5C4033] mb-3">🎯 見積書からピックアップした対象候補機器</h4>
+                                    <p class="text-sm text-stone-700 mb-4">当補助金は「あらかじめカタログに登録された製品」を選ぶ必要があります。見積書の中で、対象カテゴリ（スチームコンベクションオーブン、業務用食器洗浄機など）に該当し、省力化効果が認められやすい機器は以下の2点です（計 約283万円分）。</p>
+                                    
+                                    <div class="bg-white rounded border border-green-200 p-4 mb-4">
+                                        <ul class="space-y-4">
+                                            <li class="flex items-start border-b border-gray-100 pb-3">
+                                                <span class="text-green-600 mr-3 text-lg">✅</span>
+                                                <div>
+                                                    <span class="font-bold text-[#5C4033]">スチコン (XJBC06EU EPRM)</span>
+                                                    <span class="block text-sm text-stone-600 mt-1">見積額: 1,989,000円</span>
+                                                    <span class="block text-xs text-stone-500 mt-1">【期待効果】自動調理プログラム活用による調理業務の省力化・標準化（餃子パンの具材調理等）</span>
+                                                </div>
+                                            </li>
+                                            <li class="flex items-start">
+                                                <span class="text-green-600 mr-3 text-lg">✅</span>
+                                                <div>
+                                                    <span class="font-bold text-[#5C4033]">洗浄機 (MDKLTB8E)</span>
+                                                    <span class="block text-sm text-stone-600 mt-1">見積額: 850,000円</span>
+                                                    <span class="block text-xs text-stone-500 mt-1">【期待効果】手洗い作業の大幅な削減による、スタッフの負担軽減と製造業務への配置転換</span>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                    </div>
+
+                                    <div class="bg-orange-50 p-4 rounded border border-orange-100">
+                                        <h4 class="font-bold text-[#5C4033] mb-2">📌 次のアクション・留意点</h4>
+                                        <p class="text-sm text-stone-700">まずは販売店（大村商会様）に、<strong>「この見積もりの具体的な型番は省力化投資補助金の製品カタログに登録されているか」</strong>をご確認ください。もし未登録の場合でも、機能が同等でカタログに載っている他社製品（マルゼンやホシザキ等）に切り替えることで、採択率の高いこの補助金をスムーズに活用できる可能性が高まります。</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subsidy Card 4 (New: Local Energy Saving) -->
+                        <div class="bg-white rounded-xl shadow-sm border border-orange-200 overflow-hidden">
+                            <button onclick="toggleAccordion('acc4')" class="w-full px-6 py-5 text-left flex justify-between items-center hover:bg-orange-50 transition-colors focus:outline-none">
+                                <div>
+                                    <span class="inline-block px-2 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded mb-2">【直近期限】省エネ・コスト削減向け</span>
+                                    <h3 class="text-xl font-bold text-[#5C4033]">自治体（岡山市・岡山県）の省エネ機器補助金</h3>
+                                    <p class="text-sm text-stone-500 mt-1">冷凍・冷蔵庫、オーブン等の高効率機器への更新</p>
+                                </div>
+                                <span id="icon-acc4" class="text-2xl text-orange-400 transition-transform duration-300">＋</span>
+                            </button>
+                            <div id="acc4" class="accordion-content bg-purple-50/30">
+                                <div class="p-6 border-t border-orange-100 space-y-6">
+                                    
+                                    <!-- Okayama City -->
+                                    <div>
+                                        <h4 class="font-bold text-purple-800 text-lg border-b border-purple-200 pb-1 mb-3">🔥 最優先：岡山市 省エネ機器更新緊急支援補助金（第5弾）</h4>
+                                        <div class="grid md:grid-cols-2 gap-4">
+                                            <div>
+                                                <ul class="text-sm text-stone-700 space-y-1 list-disc list-inside">
+                                                    <li><strong>対象エリア:</strong> 岡山市内に事業所を有すること（新拠点が岡山市内であれば対象）</li>
+                                                    <li><strong>補助額・補助率:</strong> 法人上限 <span class="text-red-600 font-bold">200万円</span> (2/3補助)</li>
+                                                    <li><strong>エントリー期間:</strong> <span class="text-red-600 font-bold bg-yellow-100 px-1">2026年3月16日(月) 〜 4月6日(月)</span></li>
+                                                </ul>
+                                            </div>
+                                            <div class="bg-white p-3 rounded border border-purple-100 text-sm text-stone-700">
+                                                <strong>🎯 見積りからの対象候補:</strong><br>
+                                                プレハブ冷凍庫(240万)、台下冷蔵庫類、オーブン類など。<br>
+                                                <span class="text-xs text-stone-500">※要件として「従来機器と比較して5%以上の省エネ効果が見込まれること（設備・機器比較証明書）」が必要です。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Okayama Prefecture -->
+                                    <div>
+                                        <h4 class="font-bold text-[#5C4033] text-lg border-b border-gray-200 pb-1 mb-3">⏳ 待機：岡山県 中小企業省エネ設備更新支援事業</h4>
+                                        <ul class="text-sm text-stone-700 space-y-1 list-disc list-inside">
+                                            <li><strong>現在の状況:</strong> 3月12日をもって一旦締め切りとなります。</li>
+                                            <li><strong>今後の見通し:</strong> 令和8年（2026年）4月以降に次回の募集がかかる見込みです。</li>
+                                            <li class="mt-2 text-stone-500 text-xs">※新拠点が里庄町等の岡山市外である場合、あるいは岡山市の申請に間に合わなかった場合は、4月以降の県の補助金動向を注視し、こちらでの申請を狙います。</li>
+                                        </ul>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subsidy Card 5 (New: 業務改善助成金) -->
+                        <div class="bg-white rounded-xl shadow-sm border border-orange-200 overflow-hidden">
+                            <button onclick="toggleAccordion('acc5')" class="w-full px-6 py-5 text-left flex justify-between items-center hover:bg-orange-50 transition-colors focus:outline-none">
+                                <div>
+                                    <span class="inline-block px-2 py-1 bg-pink-100 text-pink-700 text-xs font-bold rounded mb-2">賃上げ・生産性向上向け</span>
+                                    <h3 class="text-xl font-bold text-[#5C4033]">業務改善助成金（令和8年度）</h3>
+                                    <p class="text-sm text-stone-500 mt-1">最低賃金の引上げと設備投資をセットで支援</p>
+                                </div>
+                                <span id="icon-acc5" class="text-2xl text-orange-400 transition-transform duration-300">＋</span>
+                            </button>
+                            <div id="acc5" class="accordion-content bg-pink-50/30">
+                                <div class="p-6 border-t border-orange-100">
+                                    <h4 class="font-bold text-[#5C4033] mb-2">💡 助成額の算出と要件（従業員31名の場合）</h4>
+                                    <p class="text-sm text-stone-700 mb-4">
+                                        すでに最低賃金での賃上げを実施（または予定）しており、それを「生産性向上に資する設備投資」と紐づけることで助成対象となります。
+                                    </p>
+                                    
+                                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                                        <div class="bg-white p-4 rounded border border-pink-100 border-t-4 border-t-pink-400">
+                                            <h5 class="font-bold text-pink-800 text-sm mb-2">💰 助成上限額の算出（試算）</h5>
+                                            <ul class="text-sm text-stone-700 space-y-2">
+                                                <li><strong>引上げ額基準:</strong> 昨年度の岡山県最低賃金引上げ幅（+50円）をベースに「50円コース」を適用。</li>
+                                                <li><strong>対象人数:</strong> 従業員31名。引上げ対象者が「10人以上」の最大枠に該当。</li>
+                                                <li><strong>助成上限額:</strong> <span class="text-2xl font-black text-red-600">150万円</span> <span class="text-xs text-stone-500">（助成率: 3/4 または 4/5）</span></li>
+                                            </ul>
+                                        </div>
+                                        <div class="bg-white p-4 rounded border border-pink-100">
+                                            <h5 class="font-bold text-[#5C4033] text-sm mb-2">🎯 設備投資への充当イメージ</h5>
+                                            <p class="text-sm text-stone-700">
+                                                今回導入する設備のうち、作業効率を劇的に上げる機械（例：<strong>スーパーシーター 約162万円</strong>など）の購入費用として、この150万円の枠を充てることが可能です。
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-orange-50 p-4 rounded border border-orange-100">
+                                        <h4 class="font-bold text-[#5C4033] mb-2">📌 重要な戦略（他補助金との使い分け）</h4>
+                                        <p class="text-sm text-stone-700 mb-2">
+                                            他の補助金（省力化投資補助金や省エネ補助金など）と、<strong>「全く同じ設備（同一の経費）」に対して二重で補助金をもらうことはできません。</strong>
+                                        </p>
+                                        <p class="text-sm text-stone-700 font-bold">
+                                            【おすすめの申請戦略】見積書（約4,650万円）を切り分けて申請します。<br>
+                                            ・スチコン・洗浄機 ➡ 「省力化投資補助金」<br>
+                                            ・プレハブ冷凍庫・冷蔵庫 ➡ 「岡山市省エネ補助金」<br>
+                                            ・スーパーシーター ➡ 「業務改善助成金」<br>
+                                            ・大型オーブン類 ➡ 「ものづくり補助金 または 新事業進出補助金」
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- Section: Action Plan -->
+                <section id="section-action" class="hidden">
+                    <div class="mb-8">
+                        <h2 class="text-3xl font-bold text-[#5C4033] border-b-4 border-orange-400 inline-block pb-2 mb-4">アクションプラン</h2>
+                        <p class="text-lg text-stone-600">ミーティング内容に基づき、申請（2月下旬想定）と10月オープンに向けたタスクを整理しました。クリックして進捗を管理できます。</p>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-orange-100">
+                        <div class="space-y-4">
+                            
+                            <!-- Task 1 -->
+                            <label class="flex items-start p-4 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                <input type="checkbox" class="mt-1 w-5 h-5 text-orange-500 rounded focus:ring-orange-400" checked>
+                                <div class="ml-4">
+                                    <p class="font-bold text-[#5C4033]">【完了】GビズIDプライムアカウントの申請</p>
+                                    <p class="text-sm text-stone-500">ミーティングにてオンライン申請完了。申請書を印刷し、実印押印・印鑑証明書を添付して郵送済。</p>
+                                </div>
+                            </label>
+
+                            <!-- Task 2 -->
+                            <label class="flex items-start p-4 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors border-l-4 border-l-orange-400 bg-orange-50/30">
+                                <input type="checkbox" class="mt-1 w-5 h-5 text-orange-500 rounded focus:ring-orange-400">
+                                <div class="ml-4">
+                                    <p class="font-bold text-[#5C4033]">【進行中】機械設備の最終見積もりと納期確認</p>
+                                    <p class="text-sm text-stone-500">大村商会様の見積り（約4650万）を基に、導入設備を確定。補助金申請には「発注・納品・支払い」が期間内に完了するかの納期確認が必須。</p>
+                                </div>
+                            </label>
+
+                            <!-- Task 3 -->
+                            <label class="flex items-start p-4 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                <input type="checkbox" class="mt-1 w-5 h-5 text-orange-500 rounded focus:ring-orange-400">
+                                <div class="ml-4">
+                                    <p class="font-bold text-[#5C4033]">事業計画書の策定（社会保険労務士・行政書士の杉山と連携）</p>
+                                    <p class="text-sm text-stone-500">社会保険労務士・行政書士の杉山と連携し、「新設備による新商品開発（高付加価値化）」や「新市場進出」を軸とした計画書を作成する。自社の受賞歴を強くアピールする。</p>
+                                </div>
+                            </label>
+
+                            <!-- Task 4 -->
+                            <label class="flex items-start p-4 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                                <input type="checkbox" class="mt-1 w-5 h-5 text-orange-500 rounded focus:ring-orange-400">
+                                <div class="ml-4">
+                                    <p class="font-bold text-[#5C4033]">採択後：5年間の事業状況報告（重要）</p>
+                                    <p class="text-sm text-stone-500">ミーティングで懸念されていた点。補助金受領後も、毎年賃金引き上げ等の計画目標の達成状況を報告する義務があることを認識しておく。</p>
+                                </div>
+                            </label>
+
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Footer spacer -->
+                <div class="h-20"></div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- Navigation Logic ---
+        function switchTab(tabId) {
+            // Hide all sections
+            document.querySelectorAll('section').forEach(sec => {
+                sec.classList.remove('block');
+                sec.classList.add('hidden');
+            });
+            // Show target section
+            document.getElementById(`section-${tabId}`).classList.remove('hidden');
+            document.getElementById(`section-${tabId}`).classList.add('block');
+
+            // Update Desktop Nav styles
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-orange-500', 'text-white');
+                btn.classList.add('text-[#5C4033]');
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            });
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            if(activeBtn) {
+                activeBtn.classList.add('active');
+                activeBtn.style.backgroundColor = '#D97736';
+                activeBtn.style.color = 'white';
+            }
+
+            // Sync Mobile Nav
+            const mobileNav = document.getElementById('mobile-nav');
+            if(mobileNav) mobileNav.value = tabId;
+
+            // Render chart if investment tab is opened
+            if(tabId === 'investment') {
+                renderChart();
+            }
+        }
+
+        // --- Accordion Logic ---
+        function toggleAccordion(accId) {
+            const content = document.getElementById(accId);
+            const icon = document.getElementById(`icon-${accId}`);
+            
+            if (content.classList.contains('open')) {
+                content.classList.remove('open');
+                icon.style.transform = 'rotate(0deg)';
+                icon.textContent = '＋';
+            } else {
+                content.classList.add('open');
+                icon.style.transform = 'rotate(45deg)';
+                icon.textContent = '×';
+            }
+        }
+
+        // --- Chart.js Implementation ---
+        let myChart = null;
+        function renderChart() {
+            if (myChart) return; // Already rendered
+
+            const ctx = document.getElementById('investmentChart').getContext('2d');
+            
+            // Data based on provided quotation parsing (approximate categorization for visual clarity)
+            const data = {
+                labels: [
+                    '焼成設備 (オーブン類)',
+                    '冷凍・冷蔵設備',
+                    '調理・加工 (スチコン・シーター等)',
+                    'その他 (洗浄機・作業台・小物)'
+                ],
+                datasets: [{
+                    data: [13650000, 8500000, 5600000, 18765410], // Total approx 46,515,410
+                    backgroundColor: [
+                        '#D97736', // Orange
+                        '#8CB8B7', // Soft Teal
+                        '#E5C07B', // Wheat/Yellow
+                        '#C8AE9D'  // Light Brown
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            };
+
+            const config = {
+                type: 'doughnut',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // CRITICAL for respecting container bounds
+                    cutout: '65%',
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { family: 'Helvetica Neue, sans-serif' },
+                                color: '#5C4033',
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) { label += ': '; }
+                                    if (context.parsed !== null) {
+                                        label += new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumSignificantDigits: 3 }).format(context.parsed);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            myChart = new Chart(ctx, config);
+        }
+
+        // Initialize first tab styles
+        switchTab('overview');
+    </script>
+</body>
+</html>
